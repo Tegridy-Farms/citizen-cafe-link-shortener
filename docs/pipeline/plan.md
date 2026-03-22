@@ -246,3 +246,79 @@ The `key` field in `ShortenForm` uses `type="password"` to obscure the value. Th
 ## Stage Count Justification (updated)
 
 4 stages for a Medium-tier project (max 5). Stage 4 is a production-fix stage added post-pipeline per Mode C protocol — `src/lib/env.ts` eagerly throws at build time, blocking every Vercel deployment. The fix is a focused, independently testable change to a single architectural module.
+
+---
+
+## Stage 5: Production Fix — Shortcode Route 500 on Not-Found
+
+**Objective:** Fix `app/[shortcode]/page.tsx` (and `src/lib/db.ts` if implicated) so that requests to non-existent shortcodes return HTTP 404 rather than HTTP 500.
+
+**Implements:** R-005, R-006 (correct redirect and not-found handling in production)
+
+**Prerequisites:** Stage 4 complete (lazy env, build succeeds, deployment READY)
+
+**Architecture:**
+- **Root cause (from `docs/qa/production-reality-report.md`):** `GET /<shortcode>` returns HTTP 500 for all non-existent shortcodes. The RSC response body contains the branded 404 UI (correct template is rendered), but the HTTP status is 500, indicating an unhandled server-side runtime error is thrown before `notFound()` can surface the 404 status. Vercel build logs show error digest `5:E{"digest":"4231695441"}`.
+- **Two likely failure modes — both must be investigated and fixed:**
+  1. **`db.ts` sql helper throws instead of returning an empty result:** `src/lib/db.ts` uses `(pool as any).sql.bind(pool)` as a tagged template. If `.sql` does not exist on the `@vercel/postgres` pool object at runtime (it differs from the `sql` named export), the query throws instead of returning `{ rows: [] }`. The fix is to use the correct `@vercel/postgres` API: import `sql` directly from `@vercel/postgres` and pass `DATABASE_URL` via the query client, OR use `createClient()` from `@vercel/postgres` with explicit connection. Never use `(pool as any).sql`.
+  2. **`notFound()` thrown inside a try/catch:** If `app/[shortcode]/page.tsx` wraps the DB call in a `try/catch`, the `notFound()` throw (which is a special Next.js internal throw) will be swallowed by the catch block and re-thrown as a generic 500. The fix: do NOT catch `notFound()` — only catch genuine DB errors; let the `notFound()` throw propagate unimpeded.
+- **Correct pattern for `app/[shortcode]/page.tsx`:**
+  ```ts
+  import { notFound, redirect } from 'next/navigation';
+  import { isNotFoundError } from 'next/dist/client/components/not-found';
+  // OR: simply don't catch the notFound() throw at all
+
+  export default async function ShortcodePage({ params }: { params: { shortcode: string } }) {
+    let row: { original_url: string } | null = null;
+    try {
+      row = await lookupShortcode(params.shortcode); // may throw on DB error
+    } catch (err) {
+      // Re-throw notFound errors so Next.js can handle them correctly
+      if (isNotFoundError(err)) throw err;
+      throw err; // re-throw DB errors as 500
+    }
+    if (!row) notFound();
+    redirect(row.original_url);
+  }
+  ```
+  Simpler and preferred: do not use try/catch at all in this RSC; let the DB call propagate naturally.
+- **`src/lib/db.ts` correct `@vercel/postgres` usage:**
+  - Import `sql` from `@vercel/postgres` directly (the named export, not via a pool).
+  - All queries use the `sql` tagged template directly: `sql\`SELECT original_url FROM links WHERE shortcode = ${shortcode}\``.
+  - Do not use `createPool()` + `(pool as any).sql` — this is the pattern that fails at runtime.
+- **Tests:** Add/update `tests/shortcode-route.test.ts` to assert: (a) when DB returns no rows for a shortcode, the page function calls/throws `notFound()`; (b) when DB returns a row, the page calls `redirect(original_url)`; (c) a DB-level error (mock throws) propagates as an unhandled error (not silently swallowed).
+
+**Design:** No UI changes. This is a pure runtime correctness fix.
+
+**Product Note:** The branded 404 UI is already rendered correctly — the bug is the HTTP status code only. The fix must not alter any component or CSS; only `app/[shortcode]/page.tsx` and `src/lib/db.ts` need changes.
+
+**Test strategy:** strict
+
+### Files to Create/Modify
+
+| File Path | Action | Purpose |
+|-----------|--------|---------|
+| `app/[shortcode]/page.tsx` | modify | Remove any try/catch that swallows `notFound()`; ensure `notFound()` propagates cleanly |
+| `src/lib/db.ts` | modify | Replace `(pool as any).sql.bind(pool)` with direct `sql` import from `@vercel/postgres`; fix tagged-template query execution |
+| `tests/shortcode-route.test.ts` | create/modify | Unit tests: notFound() called on missing shortcode, redirect() called on found shortcode, DB error propagates |
+
+### Acceptance Criteria — Stage 5
+
+1. [ ] `GET /INVALIDCODE` (shortcode not in DB) returns HTTP **404** in production — not 500. Verified by Tweek smoke test against the deployed Vercel URL — R-006.
+2. [ ] `GET /INVALIDCODE` renders the branded Citizen Cafe 404 page (`app/not-found.tsx`) with correct Citizen Cafe logo, heading, and support text — R-006, R-010.
+3. [ ] `GET /<valid-shortcode>` (shortcode present in DB) returns HTTP **302** with `Location` header pointing to the original URL — R-005. (Tweek must create a test link via `POST /api/shorten` first, or Kenny must seed a test row directly into the Neon DB.)
+4. [ ] `src/lib/db.ts` contains no reference to `(pool as any).sql` or any `createPool().sql` pattern — the `sql` tagged template is imported directly from `@vercel/postgres`.
+5. [ ] `app/[shortcode]/page.tsx` does not contain a `try/catch` block that catches `notFound()` without re-throwing it; `notFound()` propagates cleanly to the Next.js 404 handler.
+6. [ ] `tests/shortcode-route.test.ts` passes: mock DB returning empty rows triggers `notFound()`, mock DB returning a row triggers `redirect(original_url)`.
+7. [ ] All existing tests continue to pass (`npm test` — test count must not decrease from 57).
+8. [ ] `npm run build` succeeds: no TypeScript errors, no lint errors.
+
+### Estimated Complexity
+
+**Complexity:** S
+
+---
+
+## Stage Count Justification (updated)
+
+5 stages for a Medium-tier project (max 5). Stage 5 is a second production-fix stage added per Mode C protocol — `app/[shortcode]/page.tsx` returns HTTP 500 instead of 404 for non-existent shortcodes due to a runtime error in the DB helper or notFound() being caught. Five stages is exactly the medium-tier cap; no further justification needed.

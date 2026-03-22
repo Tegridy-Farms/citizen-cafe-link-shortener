@@ -4,8 +4,8 @@
 **Plan:** `docs/pipeline/plan.md`
 **Last updated:** 2026-03-22
 
-**Current Stage: 4 (ALL STAGES COMPLETE)**
-**Total Stages: 4**
+**Current Stage: 5**
+**Total Stages: 5**
 
 ---
 
@@ -16,7 +16,8 @@
 | 1 | Scaffold, Migrations, and Core Library | DONE | stage-1-scaffold-migrations-core | PR #1 merged. 19 tests, 100% lib coverage, grade A. |
 | 2 | API Route — Shorten + Redirect | DONE | stage-2-api-route-shorten-redirect | PR #2 merged. 48 tests, 95.91% line coverage. QA PASS. |
 | 3 | Frontend UI — Branding, Homepage Form, and 404 Page | DONE | stage-3-frontend-ui-branding | PR #3 merged. 55 tests, 96.07% line coverage. QA PASS. |
-| 4 | Production Fix — Lazy Env Validation | DONE | stage-4-lazy-env-validation | PR #4 merged. 57 tests, build passes. Lazy getEnv() singleton implemented. PIPELINE COMPLETE. |
+| 4 | Production Fix — Lazy Env Validation | DONE | stage-4-lazy-env-validation | PR #4 merged. 57 tests, build passes. Lazy getEnv() singleton implemented. |
+| 5 | Production Fix — Shortcode Route 500 on Not-Found | IN_PROGRESS | — | Production smoke FAIL: GET /[shortcode] returns 500 instead of 404. Root cause: db.ts uses (pool as any).sql or notFound() swallowed by try/catch. Fix: use direct sql import from @vercel/postgres; remove catch around notFound(). |
 
 ---
 
@@ -129,3 +130,17 @@
 | Date       | Note |
 |------------|------|
 | 2026-03-22 | Cartman: PR #4 merged (squash) to main. Stage 4 DONE. All 4 stages complete — PIPELINE COMPLETE. |
+
+---
+
+## Stage 5: Production Fix — Shortcode Route 500 on Not-Found
+
+**Objective:** Fix `app/[shortcode]/page.tsx` and `src/lib/db.ts` so GET /[shortcode] returns HTTP 404 (not 500) for non-existent shortcodes.
+
+**Status:** IN_PROGRESS
+
+### Development notes
+
+| Date       | Note |
+|------------|------|
+| 2026-03-22 | Production fix triggered by Tweek: PRODUCTION_VERIFICATION_FAILED. Deployment READY, env vars PASS. Root cause: GET /[shortcode] returns HTTP 500 instead of 404 for missing shortcodes. Likely causes: (pool as any).sql throws at runtime, or notFound() swallowed by try/catch. Fix: use direct sql import from @vercel/postgres; remove any catch that swallows notFound(). Stage 5 tasks created; Kenny handed off. |
