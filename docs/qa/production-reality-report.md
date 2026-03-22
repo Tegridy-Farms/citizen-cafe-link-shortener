@@ -7,9 +7,9 @@
 | Field | Value |
 |-------|-------|
 | Polling enabled | yes |
-| Deployment ID | dpl_Gfds3KRa7VgQgKujUnhF7xqaLjPr |
+| Deployment ID | dpl_9WPBqyLWdfDRhUf2GqTwkQdnCJ6c |
 | Final state | READY |
-| Error (if any) | None — build succeeded |
+| Error (if any) | None — build succeeded (Stage 5+6 fix deployed) |
 
 ## Env preflight
 | Key | Required Targets | Present Targets | Status |
@@ -29,21 +29,60 @@
 ## API probe
 | Path | Expected | Actual | Notes |
 |------|----------|--------|-------|
-| POST /api/shorten (wrong key) | 401 | 401 | PASS — returns `{"error":"Unauthorized"}` |
-| POST /api/shorten (empty body) | 400 | 400 | PASS — returns `{"error":"Invalid URL"}` |
+| POST /api/shorten (wrong key) | 401 | 401 | PASS — returns `{"error":"Unauthorized"}` (returns before DB call) |
+| POST /api/shorten (empty body) | 400 | 400 | PASS — returns `{"error":"Invalid URL"}` (Zod validation, no DB call) |
+
+**Note:** Both API probe tests return early before hitting the database — 401 (key mismatch) and 400 (Zod validation). They do NOT prove DB connectivity.
+
+## Root Cause Analysis
+
+**The `@vercel/postgres` `sql` export reads `POSTGRES_URL`, NOT `DATABASE_URL`.**
+
+Source code analysis of `node_modules/@vercel/postgres/dist/chunk-7IR77QAQ.js` confirms:
+- The global `sql` export is a lazy Proxy that calls `createPool()` on first use
+- `createPool()` without a `connectionString` arg calls `postgresConnectionString('pool')`
+- That function reads `process.env.POSTGRES_URL` — NOT `DATABASE_URL`
+- Error message: `"You did not supply a 'connectionString' and no 'POSTGRES_URL' env var was found."`
+
+**Only `DATABASE_URL` is set in Vercel** (confirmed in env preflight above). There is no `POSTGRES_URL` env var.
+
+### Why the API route appeared to work
+The API probe tests (401, 400) both return **before** any database query executes:
+- Wrong key → 401 at auth check (no SQL)
+- Empty body → 400 at Zod validation (no SQL)
+
+A successful POST (with correct key + valid URL) would also 500 because it hits the DB.
+
+### Stage 5/6 regression
+The original `db.ts` (pre-Stage 5) used `createPool({ connectionString: env.DATABASE_URL })` — explicitly passing `DATABASE_URL`. The Stage 5/6 "fix" replaced this with `import { sql } from '@vercel/postgres'; export { sql };`, which removed the explicit connection string and relies on auto-discovery of `POSTGRES_URL` (which doesn't exist).
+
+## Fix Required
+
+**Option A (recommended):** Fix `src/lib/db.ts` to use `createPool({ connectionString: process.env.DATABASE_URL })` and export a working `sql` function from the pool:
+
+```typescript
+import { createPool } from '@vercel/postgres';
+
+const pool = createPool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+export const sql = pool.sql.bind(pool);
+```
+
+**Important:** `pool.sql` is an async method on `VercelPool` — `.bind(pool)` is required. Call as: `await sql\`SELECT ...\`` (tagged template). The `sql` function from `pool.sql.bind(pool)` returns `Promise<QueryResult<T>>` — the caller expects `.rows` on the result.
+
+**Option B (quick, but breaks architecture):** Add `POSTGRES_URL` env var in Vercel pointing to the same Neon connection string as `DATABASE_URL`. However, the architecture mandates `DATABASE_URL` as the single canonical key (per PRD L10/L11), so this is not recommended.
 
 ## Issues
-1. **[/[shortcode]] — HTTP 500 instead of 404 for nonexistent shortcodes** — Every request to `GET /<shortcode>` where the shortcode does not exist in the DB returns HTTP 500 instead of the expected 404. The RSC response payload contains the branded not-found content (Citizen Cafe logo, "Link Not Found" heading) but the HTTP status is 500, not 404. The RSC payload includes an error digest `5:E{"digest":"4231695441"}`, indicating a server-side runtime error is being thrown. This means the `notFound()` call in `app/[shortcode]/page.tsx` is either not being reached (SQL query throws first) or its effect is being overridden by an unhandled error. Possible root causes:
-   - The `sql` tagged template in `src/lib/db.ts` uses `(pool as any).sql.bind(pool)` — the `.sql` property on `createPool()` may not exist or may not behave as a tagged template when bound. The API route (`route.ts`) may use a different code path or different import that works.
-   - The `notFound()` function from `next/navigation` is being thrown as expected, but an upstream error boundary catches it as a generic error before the Next.js 404 handler processes it.
-   - The response body shows the 404 UI content is rendered, but the status code is wrong — suggesting the error boundary renders the not-found template but sets status 500.
+1. **[/[shortcode]] — HTTP 500 for all dynamic routes** — `src/lib/db.ts` re-exports `sql` from `@vercel/postgres` which auto-reads `POSTGRES_URL` (not set). Every DB query throws `VercelPostgresError: missing_connection_string`. The `[shortcode]/page.tsx` RSC throws before reaching `notFound()`, causing 500 instead of 404.
 
-2. **Redirect flow (GET /[valid-shortcode] → 302) untestable** — Cannot verify the redirect flow (user-flows Flow 2) because creating a test link requires the `SHORTEN_API_KEY` value, which is encrypted in Vercel. However, the underlying issue is moot: if the `[shortcode]/page.tsx` RSC throws a 500 for nonexistent codes, it likely also fails for existing codes (same code path through `sql` before the conditional branch).
+2. **All DB-dependent routes are broken** — Any route that executes a SQL query will fail. This includes both the redirect flow (`GET /[shortcode]`) and the full API flow (`POST /api/shorten` with valid key + URL). Only routes that return early (auth/validation failures) appear to work.
 
 ## Classification
 **BLOCKED — code_fix_required**
 
-Env contract is complete (all 3 vars present with correct targets), deployment is READY, API routes work correctly. The bug is in the `app/[shortcode]/page.tsx` server component — the `sql` tagged template call or the `notFound()` handling produces an unhandled runtime error instead of a clean 404 response.
+Env contract is complete (all 3 required vars present with correct targets). Deployment is READY. The bug is in `src/lib/db.ts` — it must use `createPool({ connectionString: process.env.DATABASE_URL })` instead of re-exporting `sql` from `@vercel/postgres` (which reads `POSTGRES_URL`).
 
 ## Handoff
-- BLOCKED + code_fix_required: Cartman (fix required in `app/[shortcode]/page.tsx` and/or `src/lib/db.ts`)
+- BLOCKED + code_fix_required: Cartman (fix `src/lib/db.ts` to pass `DATABASE_URL` explicitly to `createPool()`)
