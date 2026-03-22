@@ -33,9 +33,17 @@ describe('src/lib/db.ts', () => {
     jest.dontMock('@vercel/postgres');
   });
 
-  it('calls createPool with the DATABASE_URL connection string', () => {
-    require('../src/lib/db');
+  it('calls createPool with the DATABASE_URL connection string on first sql call', async () => {
+    jest.doMock('../src/lib/env', () => ({
+      getEnv: jest.fn(() => REQUIRED_ENV),
+    }));
+    const db = require('../src/lib/db') as { sql: unknown };
     const { createPool } = require('@vercel/postgres') as { createPool: jest.Mock };
+
+    // First sql call should trigger pool creation
+    const sql = db.sql as (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+    await sql`SELECT 1`;
+
     expect(createPool).toHaveBeenCalledWith(
       expect.objectContaining({ connectionString: REQUIRED_ENV.DATABASE_URL })
     );
@@ -46,9 +54,22 @@ describe('src/lib/db.ts', () => {
     expect(typeof db.sql).toBe('function');
   });
 
-  it('exports the pool instance', () => {
-    const db = require('../src/lib/db') as { pool: unknown };
-    expect(db.pool).toBeDefined();
+  it('does not eagerly create the pool on module import', () => {
+    jest.dontMock('@vercel/postgres');
+    jest.resetModules();
+    jest.doMock('@vercel/postgres', () => ({
+      createPool: jest.fn().mockReturnValue({
+        sql: jest.fn(),
+        query: jest.fn(),
+      }),
+    }));
+    Object.assign(process.env, REQUIRED_ENV);
+
+    require('../src/lib/db');
+    const { createPool } = require('@vercel/postgres') as { createPool: jest.Mock };
+
+    // createPool should NOT have been called yet (lazy initialization)
+    expect(createPool).not.toHaveBeenCalled();
   });
 
   it('does not reference POSTGRES_URL in source', () => {

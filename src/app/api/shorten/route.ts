@@ -9,13 +9,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { sql } from '@/lib/db';
-import { env } from '@/lib/env';
+import { getEnv } from '@/lib/env';
 import { ShortenRequestSchema } from '@/lib/schemas';
 import type { LinkRecord } from '@/types';
 
 const MAX_SHORTCODE_ATTEMPTS = 3;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const env = getEnv();
+
   // 1. Parse and validate request body
   let body: unknown;
   try {
