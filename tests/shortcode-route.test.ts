@@ -3,30 +3,48 @@
  * Covers acceptance criteria for Stage 5 — 404/302 handling and notFound() propagation.
  */
 
+// --- Module mocks (hoisted by jest before imports) ---
+
+const mockSql = jest.fn();
+
+// Mock notFound to throw a special error (like Next.js does internally)
+class NotFoundError extends Error {
+  constructor() {
+    super('NEXT_NOT_FOUND');
+    this.name = 'NotFoundError';
+  }
+}
+
+const mockNotFound = jest.fn(() => {
+  throw new NotFoundError();
+});
+
+const mockRedirect = jest.fn((url: string) => {
+  throw new Error(`NEXT_REDIRECT to ${url}`);
+});
+
+jest.mock('next/navigation', () => ({
+  notFound: (...args: unknown[]) => mockNotFound(...args),
+  redirect: (...args: unknown[]) => mockRedirect(...args),
+}));
+
+// Mock @vercel/postgres at the lowest level — this is what db.ts imports
+jest.mock('@vercel/postgres', () => ({
+  sql: (...args: unknown[]) => mockSql(...args),
+  createPool: jest.fn(() => ({
+    sql: (...args: unknown[]) => mockSql(...args),
+  })),
+}));
+
+// --- Test setup ---
+
 const REQUIRED_ENV = {
   DATABASE_URL: 'postgres://test:pass@localhost/testdb',
   SHORTEN_API_KEY: 'test-api-key',
   APP_BASE_URL: 'http://localhost:3000',
 };
 
-describe('src/app/[shortcode]/page.tsx', () => {
-  let savedEnv: NodeJS.ProcessEnv;
-
-  beforeEach(() => {
-    savedEnv = { ...process.env };
-    Object.assign(process.env, REQUIRED_ENV);
-    jest.resetModules();
-  });
-
-  afterEach(() => {
-    for (const key of Object.keys(process.env)) {
-      if (!(key in savedEnv)) delete process.env[key];
-    }
-    Object.assign(process.env, savedEnv);
-    jest.dontMock('@vercel/postgres');
-    jest.dontMock('next/navigation');
-  });
-
+describe('src/app/[shortcode]/page.tsx — source checks', () => {
   // AC#5: page.tsx does not have try/catch that swallows notFound()
   it('page source does not contain try/catch around sql call', () => {
     const fs = require('fs') as typeof import('fs');
@@ -55,13 +73,14 @@ describe('src/app/[shortcode]/page.tsx', () => {
   });
 });
 
-describe('src/app/[shortcode]/page.tsx — integration', () => {
+describe('src/app/[shortcode]/page.tsx — behavior', () => {
   let savedEnv: NodeJS.ProcessEnv;
 
   beforeEach(() => {
     savedEnv = { ...process.env };
     Object.assign(process.env, REQUIRED_ENV);
     jest.resetModules();
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
@@ -69,75 +88,38 @@ describe('src/app/[shortcode]/page.tsx — integration', () => {
       if (!(key in savedEnv)) delete process.env[key];
     }
     Object.assign(process.env, savedEnv);
-    jest.dontMock('@/lib/db');
-    jest.dontMock('next/navigation');
   });
 
   // AC#6: notFound() called when DB returns no rows
   it('calls notFound() when shortcode is not found in DB', async () => {
-    const notFoundMock = jest.fn(() => {
-      throw new Error('notFound called');
-    });
-    const redirectMock = jest.fn(() => {
-      throw new Error('redirect called');
-    });
+    mockSql.mockResolvedValue({ rows: [] });
 
-    jest.doMock('next/navigation', () => ({
-      notFound: notFoundMock,
-      redirect: redirectMock,
-    }));
-
-    // Mock @/lib/db to return empty rows
-    jest.doMock('@/lib/db', () => ({
-      sql: jest.fn().mockResolvedValue({ rows: [] }),
-    }));
-
-    // Re-require the page module after mocking
     const { default: ShortcodePage } = require('../src/app/[shortcode]/page');
-
-    // Should throw from notFound()
-    await expect(ShortcodePage({ params: { shortcode: 'NONEXISTENT' } })).rejects.toThrow('notFound called');
-
-    expect(notFoundMock).toHaveBeenCalled();
+    
+    // Should throw the NotFoundError when shortcode not found
+    await expect(ShortcodePage({ params: { shortcode: 'NONEXISTENT' } })).rejects.toThrow(NotFoundError);
+    expect(mockNotFound).toHaveBeenCalled();
+    expect(mockRedirect).not.toHaveBeenCalled();
   });
 
   // AC#6: redirect() called with original_url when DB returns a row
   it('calls redirect() with original_url when shortcode is found', async () => {
-    const notFoundMock = jest.fn(() => {
-      throw new Error('notFound called');
+    mockSql.mockResolvedValue({
+      rows: [{ original_url: 'https://example.com/target' }],
     });
-    const redirectMock = jest.fn(() => {
-      throw new Error('redirect called');
-    });
-
-    jest.doMock('next/navigation', () => ({
-      notFound: notFoundMock,
-      redirect: redirectMock,
-    }));
-
-    // Mock @/lib/db to return a row
-    jest.doMock('@/lib/db', () => ({
-      sql: jest.fn().mockResolvedValue({
-        rows: [{ original_url: 'https://example.com/target' }],
-      }),
-    }));
 
     const { default: ShortcodePage } = require('../src/app/[shortcode]/page');
-
-    // Should throw from redirect()
-    await expect(ShortcodePage({ params: { shortcode: 'abc123' } })).rejects.toThrow('redirect called');
-
-    expect(redirectMock).toHaveBeenCalledWith('https://example.com/target');
-    expect(notFoundMock).not.toHaveBeenCalled();
+    
+    // Should throw the redirect error when found
+    await expect(ShortcodePage({ params: { shortcode: 'abc123' } })).rejects.toThrow('NEXT_REDIRECT to https://example.com/target');
+    expect(mockRedirect).toHaveBeenCalledWith('https://example.com/target');
+    expect(mockNotFound).not.toHaveBeenCalled();
   });
 
   // AC#6: DB errors propagate (not silently swallowed)
   it('propagates DB errors without catching them', async () => {
     const dbError = new Error('Connection failed');
-
-    jest.doMock('@/lib/db', () => ({
-      sql: jest.fn().mockRejectedValue(dbError),
-    }));
+    mockSql.mockRejectedValue(dbError);
 
     const { default: ShortcodePage } = require('../src/app/[shortcode]/page');
     await expect(ShortcodePage({ params: { shortcode: 'abc123' } })).rejects.toThrow('Connection failed');
