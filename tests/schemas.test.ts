@@ -77,3 +77,32 @@ describe('ShortenResponseSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+/**
+ * Route-level contract stubs — verify the response shape { url: string }
+ * that POST /api/shorten returns on success (R-001, R-004).
+ */
+describe('ShortenResponseSchema — route contract (AC1 shape)', () => {
+  it('validates the 201 response shape returned by POST /api/shorten', () => {
+    // The API MUST return { url: "<APP_BASE_URL>/<shortcode>" } — not a raw string
+    const result = ShortenResponseSchema.safeParse({
+      url: 'http://localhost:3000/abcde12345',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects { shortUrl: string } — wrong field name', () => {
+    const result = ShortenResponseSchema.safeParse({ shortUrl: 'http://localhost:3000/abc' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a raw string response — API must return object', () => {
+    const result = ShortenResponseSchema.safeParse('http://localhost:3000/abc');
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an array response', () => {
+    const result = ShortenResponseSchema.safeParse(['http://localhost:3000/abc']);
+    expect(result.success).toBe(false);
+  });
+});

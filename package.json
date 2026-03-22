@@ -52,7 +52,9 @@
     "collectCoverageFrom": [
       "src/lib/env.ts",
       "src/lib/schemas.ts",
-      "src/lib/db.ts"
+      "src/lib/db.ts",
+      "src/lib/api/shorten.ts",
+      "src/app/api/shorten/route.ts"
     ],
     "coverageThreshold": {
       "global": {

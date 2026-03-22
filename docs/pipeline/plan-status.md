@@ -14,7 +14,7 @@
 | Stage | Title | Status | Branch | Notes |
 |-------|-------|--------|--------|-------|
 | 1 | Scaffold, Migrations, and Core Library | DONE | stage-1-scaffold-migrations-core | PR #1 merged. 19 tests, 100% lib coverage, grade A. |
-| 2 | API Route — Shorten + Redirect | IN_PROGRESS | — | Handed off to Kenny |
+| 2 | API Route — Shorten + Redirect | IN_PROGRESS | stage-2-api-route-shorten-redirect | PR #2 open. 48 tests, 95.91% line coverage. Awaiting QA. |
 | 3 | Frontend UI — Branding, Homepage Form, and 404 Page | PENDING | — | Requires Stage 2 |
 
 ---
@@ -58,6 +58,7 @@
 | Date       | Note |
 |------------|------|
 | 2026-03-22 | Stage created; Kenny handed off via sessions_send |
+| 2026-03-22 | Implemented. PR #2: https://github.com/Tegridy-Farms/citizen-cafe-link-shortener/pull/2. 48 tests, 95.91% line coverage (100% branch/func). Build passes. All 9 ACs verified. |
 
 ### QA notes
 
