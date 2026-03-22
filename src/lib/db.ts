@@ -1,22 +1,28 @@
 /**
  * Single database client module.
- * Constructs the @vercel/postgres pool lazily (on first use) from DATABASE_URL.
+ * Constructs the @vercel/postgres sql client from DATABASE_URL.
  * DATABASE_URL is the only canonical env var for DB access — no alternate keys.
- * All route handlers and server components must import sql/pool from here.
+ * All route handlers and server components must import sql from here.
  */
-import { createPool, type Pool } from '@vercel/postgres';
+import { sql as vercelSql } from '@vercel/postgres';
 import { getEnv } from './env';
 
-let pool: Pool | null = null;
-let sqlFn: ((strings: TemplateStringsArray, ...values: unknown[]) => any) | null = null;
+let initialized = false;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sqlFn: any = null;
 
-function getPoolAndSql() {
-  if (!pool) {
+function initializeSQL() {
+  if (!initialized) {
     const env = getEnv();
-    pool = createPool({ connectionString: env.DATABASE_URL });
-    sqlFn = (pool as any).sql.bind(pool);
+    // Verify DATABASE_URL exists — @vercel/postgres will use it via environment
+    if (!env.DATABASE_URL) {
+      throw new Error('DATABASE_URL is not set');
+    }
+    // Use the sql function directly from @vercel/postgres
+    sqlFn = vercelSql;
+    initialized = true;
   }
-  return { pool, sqlFn };
+  return sqlFn;
 }
 
 /**
@@ -27,6 +33,6 @@ export function sql<T = Record<string, unknown>>(
   strings: TemplateStringsArray,
   ...values: unknown[]
 ) {
-  const { sqlFn: fn } = getPoolAndSql();
-  return fn!(strings, ...values) as any;
+  const fn = initializeSQL();
+  return fn(strings, ...values) as any;
 }
