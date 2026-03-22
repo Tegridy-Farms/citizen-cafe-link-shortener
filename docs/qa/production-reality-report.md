@@ -2,64 +2,48 @@
 **Date:** 2026-03-22
 **Deployed URL:** https://citizen-cafe-link-shortener.vercel.app
 **Verdict:** BLOCKED
-**Classification:** code_fix_required
 
 ## Deployment readiness
 | Field | Value |
 |-------|-------|
 | Polling enabled | yes |
-| Deployment ID | dpl_3d8Ldfc18XzAnrPdcg9NExxeBNhR |
-| Final state | ERROR |
-| Error | BUILD_UTILS_SPAWN_1 — Command "npm run build" exited with 1 |
-
-**All 5 recent deployments are in ERROR state.** The build has never succeeded.
+| Deployment ID | dpl_Gfds3KRa7VgQgKujUnhF7xqaLjPr |
+| Final state | READY |
+| Error (if any) | None — build succeeded |
 
 ## Env preflight
 | Key | Required Targets | Present Targets | Status |
 |-----|------------------|-----------------|--------|
-| DATABASE_URL | production, preview, development | development, preview, production | PASS |
+| DATABASE_URL | production, preview, development | production, preview, development | PASS |
 | SHORTEN_API_KEY | production, preview, development | development, preview, production | PASS |
 | APP_BASE_URL | production, preview, development | development, preview, production | PASS |
-
-**All required env vars are correctly configured in Vercel.** This is NOT an env/infra issue.
 
 ## Route Smoke Test
 | Route | Expected | Actual | Notes |
 |-------|----------|--------|-------|
-| / | 200 | N/A | Build failed — no deployment available to test |
-| /api/shorten | 200 (POST) | N/A | Build failed — no deployment available to test |
-| /INVALIDCODE | 404 | N/A | Build failed — no deployment available to test |
+| / | 200 | 200 | OK — homepage loads with Citizen Cafe branding |
+| /INVALIDCODE | 404 | 500 | **FAIL** — returns HTTP 500 instead of 404 |
+| /test-shortcode | 404 | 500 | **FAIL** — returns HTTP 500 instead of 404 |
+| /abc123 | 404 | 500 | **FAIL** — returns HTTP 500 instead of 404 |
 
 ## API probe
 | Path | Expected | Actual | Notes |
 |------|----------|--------|-------|
-| POST /api/shorten | 201 + JSON | N/A | Build failed — no deployment available |
+| POST /api/shorten (wrong key) | 401 | 401 | PASS — returns `{"error":"Unauthorized"}` |
+| POST /api/shorten (empty body) | 400 | 400 | PASS — returns `{"error":"Invalid URL"}` |
 
 ## Issues
+1. **[/[shortcode]] — HTTP 500 instead of 404 for nonexistent shortcodes** — Every request to `GET /<shortcode>` where the shortcode does not exist in the DB returns HTTP 500 instead of the expected 404. The RSC response payload contains the branded not-found content (Citizen Cafe logo, "Link Not Found" heading) but the HTTP status is 500, not 404. The RSC payload includes an error digest `5:E{"digest":"4231695441"}`, indicating a server-side runtime error is being thrown. This means the `notFound()` call in `app/[shortcode]/page.tsx` is either not being reached (SQL query throws first) or its effect is being overridden by an unhandled error. Possible root causes:
+   - The `sql` tagged template in `src/lib/db.ts` uses `(pool as any).sql.bind(pool)` — the `.sql` property on `createPool()` may not exist or may not behave as a tagged template when bound. The API route (`route.ts`) may use a different code path or different import that works.
+   - The `notFound()` function from `next/navigation` is being thrown as expected, but an upstream error boundary catches it as a generic error before the Next.js 404 handler processes it.
+   - The response body shows the 404 UI content is rendered, but the status code is wrong — suggesting the error boundary renders the not-found template but sets status 500.
 
-### 1. Build failure: `env.ts` throws at build time during page data collection
+2. **Redirect flow (GET /[valid-shortcode] → 302) untestable** — Cannot verify the redirect flow (user-flows Flow 2) because creating a test link requires the `SHORTEN_API_KEY` value, which is encrypted in Vercel. However, the underlying issue is moot: if the `[shortcode]/page.tsx` RSC throws a 500 for nonexistent codes, it likely also fails for existing codes (same code path through `sql` before the conditional branch).
 
-**Evidence (from Vercel build logs, deployment dpl_3d8Ldfc18XzAnrPdcg9NExxeBNhR):**
+## Classification
+**BLOCKED — code_fix_required**
 
-```
-Collecting page data ...
-Error: Missing required environment variable: SHORTEN_API_KEY. Set it in .env.local (development) or as a Vercel/GitHub Actions secret (CI/production).
-    at 7848 (/vercel/path0/.next/server/app/api/shorten/route.js:19:15851)
-> Build error occurred
-Error: Failed to collect page data for /api/shorten
-```
-
-**Root cause:** `src/lib/env.ts` validates required env vars **eagerly at module-load time** (top-level throw). When Next.js runs `next build`, it collects page data for `/api/shorten`, which imports `env.ts` → which imports and evaluates the env check → which throws because Vercel runtime env vars (like `SHORTEN_API_KEY`) are **not available during the build phase** — they're only injected at runtime.
-
-The build compiled successfully (✓ Compiled successfully) and passed type checking, but failed at the "Collecting page data" phase when it tried to pre-render/analyze the API route.
-
-**Required fix (one of):**
-1. **Lazy validation:** Change `env.ts` from eagerly throwing at module scope to exporting a function (e.g. `getEnv()`) that validates on first call. Route handlers call `getEnv()` at request time, not at import time.
-2. **Add `export const dynamic = 'force-dynamic'`** to `app/api/shorten/route.ts` to prevent Next.js from trying to pre-render/collect data for this route at build time.
-3. **Guard the throw:** Wrap the env check in `env.ts` with a condition that skips validation during build (e.g. check `process.env.NEXT_PHASE === 'phase-production-build'`).
-
-Option 1 (lazy validation) is the cleanest and most robust approach.
+Env contract is complete (all 3 vars present with correct targets), deployment is READY, API routes work correctly. The bug is in the `app/[shortcode]/page.tsx` server component — the `sql` tagged template call or the `notFound()` handling produces an unhandled runtime error instead of a clean 404 response.
 
 ## Handoff
-- **BLOCKED + code_fix_required → Cartman**
-- `src/lib/env.ts` eagerly throws at build time, crashing `next build`. Env vars ARE set in Vercel — this is a code architecture issue, not infra/env.
+- BLOCKED + code_fix_required: Cartman (fix required in `app/[shortcode]/page.tsx` and/or `src/lib/db.ts`)
