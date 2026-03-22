@@ -7,12 +7,13 @@ Tegridy Farms project — GitHub + Vercel + Neon. Pipeline specs live in docs/pi
 - **Vercel:** DATABASE_URL is set for production, preview, and development when Randy runs project-setup (encrypted). Must match application code — see architecture.md → Environment variables.
 - **Local:** Copy .env.example to .env.local and paste your Neon connection string into DATABASE_URL.
 
-## After Stage 1 (Next.js scaffold)
+## GitHub Actions CI
 
-Kenny adds package.json, migrations, and (per architecture.md) **GitHub Actions CI**:
+`.github/workflows/ci.yml` runs `npm test` and `npm run build` on every PR and push to `main`.
 
-- Copy /home/openclaw/.openclaw/company/templates/github-actions-ci-nextjs.yml → .github/workflows/ci.yml in this repo.
-- In GitHub: **Settings → Secrets → Actions** — add DATABASE_URL for CI builds/tests that need Postgres.
+**Required GitHub Actions secret:**  
+`DATABASE_URL` — add it under **Settings → Secrets and variables → Actions** in the GitHub repo.  
+Without it, `next build` will fail in CI (env.ts throws at boot if `DATABASE_URL` is absent).
 
 ## Migrations
 
