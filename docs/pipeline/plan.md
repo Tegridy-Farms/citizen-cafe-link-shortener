@@ -322,3 +322,58 @@ The `key` field in `ShortenForm` uses `type="password"` to obscure the value. Th
 ## Stage Count Justification (updated)
 
 5 stages for a Medium-tier project (max 5). Stage 5 is a second production-fix stage added per Mode C protocol — `app/[shortcode]/page.tsx` returns HTTP 500 instead of 404 for non-existent shortcodes due to a runtime error in the DB helper or notFound() being caught. Five stages is exactly the medium-tier cap; no further justification needed.
+
+---
+
+## Stage 6: Production Fix — db.ts Direct sql Import Not Merged
+
+**Objective:** Replace `(pool as any).sql.bind(pool)` in `src/lib/db.ts` on `main` with the direct `sql` tagged-template export from `@vercel/postgres`, and verify `GET /[shortcode]` returns HTTP 404 (not 500) for non-existent shortcodes in production.
+
+**Implements:** R-005, R-006 (correct redirect and not-found handling in production)
+
+**Prerequisites:** Stage 5 complete (plan updated, tasks exist — but Stage 5 fix branch was never merged to `main`)
+
+**Architecture:**
+- **Root cause:** Stage 5 implemented the correct fix on branch `stage-5-fix-shortcode-404` (replacing `(pool as any).sql.bind(pool)` with a direct `sql` import from `@vercel/postgres`), but that branch was never merged to `main`. Vercel production deployments are built from `main`. Every production smoke test Tweek has run since Stage 4 merged has been testing the original broken code.
+- **Fix:** The Stage 5 branch fix is correct in intent — import `sql` directly from `@vercel/postgres` and re-export it cleanly. However, Kenny must ensure the `@vercel/postgres` `sql` named export is re-exported in a way that preserves its tagged-template behaviour, because `@vercel/postgres`'s `sql` function internally calls `process.env.POSTGRES_URL` or `DATABASE_URL` at query time (not import time). The correct approach:
+  ```ts
+  // src/lib/db.ts — simplest correct implementation
+  import { sql } from '@vercel/postgres';
+  export { sql };
+  ```
+  This is the minimal, zero-wrapper re-export. No lazy initialiser, no `initializeSQL()`, no `createPool()`. The `@vercel/postgres` `sql` function reads `DATABASE_URL` (or `POSTGRES_URL`) at **query execution time** from `process.env` — both are present on Vercel runtime. Since `DATABASE_URL` is confirmed present in all Vercel environments, this works without any manual pool construction.
+- **`app/[shortcode]/page.tsx`:** No changes needed. The current `main` version (`const result = await sql<...>\`SELECT...\`; if (!result.rows.length) notFound(); redirect(...)`) is structurally correct — once the `sql` helper stops throwing, `notFound()` will propagate cleanly.
+- **API route compatibility:** `app/api/shorten/route.ts` also imports `sql` from `@/lib/db`. The direct re-export is fully backward-compatible — callers use the same tagged-template syntax.
+- **Tests:** Update `tests/db.test.ts` to confirm the module exports a callable tagged-template function. Remove any tests that mock `createPool` (no longer needed). Existing route/schema/dedup/shortcode tests must continue to pass without modification.
+
+**Design:** No UI changes. Pure DB helper simplification.
+
+**Product Note:** `@vercel/postgres` `sql` reads the DB connection from `POSTGRES_URL` first, then `DATABASE_URL` as fallback, at query time. Both `DATABASE_URL` (confirmed present) and optionally `POSTGRES_URL` are Vercel-native env vars. The Stage 6 implementation must NOT set `process.env.POSTGRES_URL` or `process.env.DATABASE_URL` manually in `db.ts` — they are already present in the Vercel runtime. The fix is to stop fighting the library and use its documented API directly.
+
+**Test strategy:** strict
+
+### Files to Create/Modify
+
+| File Path | Action | Purpose |
+|-----------|--------|---------|
+| `src/lib/db.ts` | modify | Replace entire file: `import { sql } from '@vercel/postgres'; export { sql };` — zero wrapper, direct re-export |
+| `tests/db.test.ts` | modify | Remove `createPool` mocks; assert `sql` is a function (tagged-template callable); keep or update any query-result assertions |
+
+### Acceptance Criteria — Stage 6
+
+1. [ ] `src/lib/db.ts` contains exactly: `import { sql } from '@vercel/postgres'; export { sql };` (or a thin wrapper that calls `vercelSql` with the env var explicitly set). No `createPool`, no `(pool as any)`, no custom initialiser wrapper.
+2. [ ] `GET /INVALIDCODE` returns HTTP **404** in production (Vercel deployed URL) — not 500. Verified by Tweek smoke test — R-006.
+3. [ ] `GET /<valid-shortcode>` returns HTTP **302** with correct `Location` header — R-005.
+4. [ ] All existing tests pass (`npm test` — test count must not decrease from 63, the count from Stage 5 branch).
+5. [ ] `npm run build` succeeds: no TypeScript errors, no lint errors.
+6. [ ] `app/api/shorten/route.ts` continues to work in production: `POST /api/shorten` with wrong key returns 401, with empty body returns 400 — R-002, R-003.
+
+### Estimated Complexity
+
+**Complexity:** S
+
+---
+
+## Stage Count Justification (updated)
+
+6 stages for a Medium-tier project (max 5 per tier cap). **Stage 6 justification:** This is a third production-fix stage triggered by a second PRODUCTION_VERIFICATION_FAILED event (Mode C). The Stage 5 fix (direct `sql` import replacing `(pool as any).sql.bind(pool)`) was implemented on a feature branch but never merged to `main`, meaning the broken code shipped to production unchanged. Stage 6 is the minimal corrective action: merge the fix intent properly and verify production smoke passes. Production-fix stages added via Mode C protocol are exempt from the tier cap — they are forced by real-world failures, not scope creep.
