@@ -4,8 +4,8 @@
 **Plan:** `docs/pipeline/plan.md`
 **Last updated:** 2026-03-22
 
-**Current Stage: 5**
-**Total Stages: 5**
+**Current Stage: 6**
+**Total Stages: 6**
 
 ---
 
@@ -18,6 +18,7 @@
 | 3 | Frontend UI — Branding, Homepage Form, and 404 Page | DONE | stage-3-frontend-ui-branding | PR #3 merged. 55 tests, 96.07% line coverage. QA PASS. |
 | 4 | Production Fix — Lazy Env Validation | DONE | stage-4-lazy-env-validation | PR #4 merged. 57 tests, build passes. Lazy getEnv() singleton implemented. |
 | 5 | Production Fix — Shortcode Route 500 on Not-Found | DONE | stage-5-fix-shortcode-404 | PR #5: https://github.com/Tegridy-Farms/citizen-cafe-link-shortener/pull/5. 63 tests (was 57), 96.96% coverage. Build passes. Fixed db.ts to use direct sql import from @vercel/postgres. |
+| 6 | Production Fix — db.ts Direct sql Import Not Merged | QA_DONE | stage-5-fix-shortcode-404 | Supersedes Stage 5. Simplified db.ts to minimal direct re-export pattern. 63 tests pass. Build succeeds. AgentShield grade A. |
 
 ---
 
@@ -145,3 +146,43 @@
 |------------|------|
 | 2026-03-22 | Production fix triggered by Tweek: PRODUCTION_VERIFICATION_FAILED. Deployment READY, env vars PASS, API routes PASS. Root cause: GET /[shortcode] returns HTTP 500 instead of 404 for all missing shortcodes. Two likely failure modes: (1) db.ts uses (pool as any).sql which may throw at runtime on Vercel Node.js runtime vs build environment; (2) any try/catch around the sql call swallows the notFound() throw before Next.js can handle it. Fix: replace (pool as any).sql with direct sql import from @vercel/postgres; ensure notFound() propagates unimpeded. Stage 5 tasks created; Kenny handed off. |
 | 2026-03-22 | Implemented. PR #5: https://github.com/Tegridy-Farms/citizen-cafe-link-shortener/pull/5. 63 tests (was 57), 96.96% coverage. Build passes. Fixed db.ts to use direct `sql` import from `@vercel/postgres` instead of unsafe `(pool as any).sql.bind(pool)` pattern. All 8 acceptance criteria verified. |
+
+### QA notes
+
+| Date       | Note |
+|------------|------|
+| 2026-03-22 | Stage 5 QA IN_PROGRESS (Butters). PR #5 remains OPEN — never merged to main. Tweek ran production smoke against deployed main (which still has broken createPool+(pool as any).sql code). Second PRODUCTION_VERIFICATION_FAILED triggered. Stage 6 created to complete the fix properly. |
+
+### Merge notes
+
+| Date       | Note |
+|------------|------|
+| 2026-03-22 | PR #5 NOT MERGED. Branch: stage-5-fix-shortcode-404. Fix is correct on branch but was not landed on main before Tweek re-ran smoke tests. Stage 6 supersedes Stage 5. |
+
+---
+
+## Stage 6: Production Fix — db.ts Direct sql Import Not Merged
+
+**Objective:** Replace `(pool as any).sql.bind(pool)` in `src/lib/db.ts` on `main` with the direct `sql` tagged-template re-export from `@vercel/postgres`, and verify production smoke passes.
+
+**Status:** QA_DONE
+
+### Development notes
+
+| Date       | Note |
+|------------|------|
+| 2026-03-22 | Production fix triggered by second PRODUCTION_VERIFICATION_FAILED from Tweek. Root cause: Stage 5's correct fix (direct sql import) was implemented on branch stage-5-fix-shortcode-404 but PR #5 was never merged to main. main still has createPool+(pool as any).sql. Fix: supersede Stage 5 branch with Stage 6 branch; implement minimal db.ts (import { sql } from '@vercel/postgres'; export { sql }); merge to main so Vercel deploys the correct code. Stage 6 tasks created; Kenny handed off. |
+| 2026-03-22 | Implemented on stage-5-fix-shortcode-404 branch (superseding Stage 5). Simplified db.ts to minimal direct re-export pattern. 63 tests pass. Build succeeds. |
+
+### QA notes
+
+| Date       | Note |
+|------------|------|
+| 2026-03-22 | Butters: Verified Stage 6 implementation. Simplified db.ts to exact pattern specified in acceptance criteria: `import { sql } from '@vercel/postgres'; export { sql };`. Removed unnecessary wrapper functions. All 63 tests pass. Build succeeds with no TypeScript or lint errors. AgentShield grade A with 0 findings. QA report: docs/qa/stage-6-review.md |
+| 2026-03-22 | Butters QA verdict: PASS_WITH_FIXES |
+
+### Merge notes
+
+| Date       | Note |
+|------------|------|
+| 2026-03-22 | Pending: Cartman to merge to main and hand off to Tweek for production smoke testing. |
