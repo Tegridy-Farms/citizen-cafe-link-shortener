@@ -377,3 +377,66 @@ The `key` field in `ShortenForm` uses `type="password"` to obscure the value. Th
 ## Stage Count Justification (updated)
 
 6 stages for a Medium-tier project (max 5 per tier cap). **Stage 6 justification:** This is a third production-fix stage triggered by a second PRODUCTION_VERIFICATION_FAILED event (Mode C). The Stage 5 fix (direct `sql` import replacing `(pool as any).sql.bind(pool)`) was implemented on a feature branch but never merged to `main`, meaning the broken code shipped to production unchanged. Stage 6 is the minimal corrective action: merge the fix intent properly and verify production smoke passes. Production-fix stages added via Mode C protocol are exempt from the tier cap — they are forced by real-world failures, not scope creep.
+
+---
+
+## Stage 7: Production Fix — db.ts Must Use createPool with DATABASE_URL
+
+**Objective:** Fix `src/lib/db.ts` to use `createPool({ connectionString: process.env.DATABASE_URL })` and export `sql` bound to that pool, so all DB queries use `DATABASE_URL` (which is set in Vercel) instead of the auto-discovered `POSTGRES_URL` (which is not set).
+
+**Implements:** R-007 (runtime DB connectivity), R-005 (redirect route works), R-006 (not-found returns 404), R-012 (shorten API inserts work)
+
+**Prerequisites:** Stage 6 complete (all prior stages merged to `main`)
+
+**Architecture:**
+- **Root cause (from `docs/qa/production-reality-report.md`):** The Stage 5/6 "fix" introduced `import { sql } from '@vercel/postgres'; export { sql };` — a bare re-export of the global `sql` function. However, `@vercel/postgres`'s global `sql` export is a lazy Proxy that auto-reads `process.env.POSTGRES_URL` (NOT `DATABASE_URL`) when the first query executes. Since only `DATABASE_URL` is set in Vercel, every SQL query throws `VercelPostgresError: missing_connection_string`. All shortcode routes return 500; the API only appeared to work because 401/400 bail before any DB call.
+- **Fix — `src/lib/db.ts`:**
+  ```typescript
+  import { createPool } from '@vercel/postgres';
+
+  const pool = createPool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
+  export const sql = pool.sql.bind(pool);
+  ```
+  `pool.sql` is a tagged-template method on `VercelPool`. `.bind(pool)` ensures `this.connectionString` resolves correctly inside the method. All callers continue using `await sql\`SELECT ...\`` — the call signature is unchanged.
+- **No other files need changes.** `app/[shortcode]/page.tsx` and `app/api/shorten/route.ts` already import `sql` from `@/lib/db` with the correct tagged-template syntax.
+- **`process.env.DATABASE_URL` is read at pool-construction time** — this happens at module scope (once, when the module is first imported). At Vercel runtime (not build time), `DATABASE_URL` is present. This is correct and safe; the pool is constructed once and reused across requests.
+- **Tests — `tests/db.test.ts`:** Update to mock `createPool` (not the bare `sql` import). Verify: (a) `createPool` is called with `{ connectionString: process.env.DATABASE_URL }`; (b) the exported `sql` is `pool.sql.bind(pool)` (i.e., a function). Do NOT remove tests that validate query-result shape — keep or update them for the new pool-based pattern.
+- **Integration smoke:** After this fix, `POST /api/shorten` with a valid key + URL must successfully insert into the DB and return 201. `GET /<shortcode>` must redirect to the original URL (302) or return 404 for non-existent shortcodes — not 500.
+
+**Design:** No UI changes. Pure DB connectivity fix.
+
+**API Consumer Contract:** `pool.sql.bind(pool)` returns the same tagged-template interface as the bare `sql` import. Callers using `` await sql`SELECT ...` `` work identically. The result object shape `{ rows: T[] }` is preserved.
+
+**Product Note:** Option B (adding a `POSTGRES_URL` env var in Vercel) is explicitly rejected per the architecture mandate that `DATABASE_URL` is the single canonical DB env var (PRD L10/L11). The fix must be in `db.ts`, not in Vercel's env config.
+
+**Test strategy:** strict
+
+### Files to Create/Modify
+
+| File Path | Action | Purpose |
+|-----------|--------|---------|
+| `src/lib/db.ts` | modify | Replace bare `sql` re-export with `createPool({ connectionString: process.env.DATABASE_URL })` + `pool.sql.bind(pool)` |
+| `tests/db.test.ts` | modify | Update mocks from bare `sql` to `createPool`; assert pool is constructed with `DATABASE_URL`; assert exported `sql` is a function |
+
+### Acceptance Criteria — Stage 7
+
+1. [ ] `src/lib/db.ts` uses `createPool({ connectionString: process.env.DATABASE_URL })` and exports `const sql = pool.sql.bind(pool)`. No bare `import { sql } from '@vercel/postgres'` re-export. No `POSTGRES_URL` reference anywhere in the file — R-007.
+2. [ ] `GET /INVALIDCODE` returns HTTP **404** in production (not 500). Verified by Tweek smoke test against the deployed Vercel URL — R-006.
+3. [ ] `GET /<valid-shortcode>` (a shortcode seeded into the Neon DB) returns HTTP **302** with correct `Location` header pointing to the original URL — R-005.
+4. [ ] `POST /api/shorten` with a valid key and a valid URL returns HTTP 201 `{ "url": "<APP_BASE_URL>/<shortcode>" }` and a new record appears in the `links` table — R-001, R-007 (proves DB write connectivity).
+5. [ ] `tests/db.test.ts` passes: `createPool` is called with `{ connectionString: process.env.DATABASE_URL }`, and the exported `sql` is a bound function (callable as a tagged template) — R-007.
+6. [ ] All existing tests continue to pass (`npm test` — test count must not decrease from 63).
+7. [ ] `npm run build` succeeds: no TypeScript errors, no lint errors.
+
+### Estimated Complexity
+
+**Complexity:** S
+
+---
+
+## Stage Count Justification (updated)
+
+7 stages for a Medium-tier project (max 5 per tier cap). **Stage 7 justification:** Fourth production-fix stage added per Mode C protocol following a third PRODUCTION_VERIFICATION_FAILED. The Stage 5/6 db.ts change (bare `sql` re-export from `@vercel/postgres`) regressed DB connectivity: the global `sql` reads `POSTGRES_URL` at query time, which is not set in Vercel — only `DATABASE_URL` is. Every DB-touching route returns 500. Stage 7 corrects this with `createPool({ connectionString: process.env.DATABASE_URL })` + `pool.sql.bind(pool)`. Production-fix stages added via Mode C are exempt from the tier cap.

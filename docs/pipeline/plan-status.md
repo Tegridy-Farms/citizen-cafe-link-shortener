@@ -4,8 +4,8 @@
 **Plan:** `docs/pipeline/plan.md`
 **Last updated:** 2026-03-22
 
-**Current Stage: 6 (COMPLETE)**
-**Total Stages: 6**
+**Current Stage: 7 (IN_PROGRESS)**
+**Total Stages: 7**
 
 ---
 
@@ -19,6 +19,7 @@
 | 4 | Production Fix — Lazy Env Validation | DONE | stage-4-lazy-env-validation | PR #4 merged. 57 tests, build passes. Lazy getEnv() singleton implemented. |
 | 5 | Production Fix — Shortcode Route 500 on Not-Found | DONE | stage-5-fix-shortcode-404 | PR #5 merged. 63 tests (was 57), 96.96% coverage. Build passes. Fixed db.ts to use direct sql import from @vercel/postgres. QA report: docs/qa/stage-5-review.md |
 | 6 | Production Fix — db.ts Direct sql Import Not Merged | DONE | stage-5-fix-shortcode-404 | Merged together with Stage 5 via PR #5. Simplified db.ts to minimal direct re-export pattern. 63 tests pass. Build succeeds. AgentShield grade A. |
+| 7 | Production Fix — db.ts Must Use createPool with DATABASE_URL | IN_PROGRESS | stage-7-db-createpool-database-url | Production fix triggered: bare sql re-export reads POSTGRES_URL (not set), not DATABASE_URL. Fix: createPool({ connectionString: process.env.DATABASE_URL }) + pool.sql.bind(pool). |
 
 ---
 
@@ -187,3 +188,17 @@
 | Date       | Note |
 |------------|------|
 | 2026-03-22 | Cartman: Merged together with Stage 5 via PR #5 (squash) to main. Stage 6 DONE. All 6 stages complete — PIPELINE COMPLETE. Sending PIPELINE COMPLETE to Randy. |
+
+---
+
+## Stage 7: Production Fix — db.ts Must Use createPool with DATABASE_URL
+
+**Objective:** Fix `src/lib/db.ts` to use `createPool({ connectionString: process.env.DATABASE_URL })` and export `sql` bound to that pool, so all DB queries resolve against `DATABASE_URL` (present in Vercel) rather than the auto-discovered `POSTGRES_URL` (not set in Vercel).
+
+**Status:** IN_PROGRESS
+
+### Development notes
+
+| Date       | Note |
+|------------|------|
+| 2026-03-22 | Production fix triggered by third PRODUCTION_VERIFICATION_FAILED from Tweek. Root cause: Stage 5/6 change (bare `import { sql } from '@vercel/postgres'; export { sql }`) regressed DB connectivity. The global `sql` export from @vercel/postgres auto-reads POSTGRES_URL at query time — not DATABASE_URL. Only DATABASE_URL is set in Vercel. Every SQL query throws VercelPostgresError: missing_connection_string. Fix: createPool({ connectionString: process.env.DATABASE_URL }) + pool.sql.bind(pool). Stage 7 tasks created; Kenny handed off. |
