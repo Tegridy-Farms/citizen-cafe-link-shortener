@@ -54,6 +54,7 @@
       "src/lib/schemas.ts",
       "src/lib/db.ts",
       "src/lib/api/shorten.ts",
+      "src/lib/validate-url.ts",
       "src/app/api/shorten/route.ts"
     ],
     "coverageThreshold": {

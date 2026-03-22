@@ -1,8 +1,17 @@
-// Homepage — Stage 2 will compose ShortenForm here (R-009, R-010, R-011).
+import type { Metadata } from 'next';
+import { PageShell } from '@/components/PageShell';
+import { BrandHeader } from '@/components/BrandHeader';
+import { ShortenForm } from '@/components/ShortenForm';
+
+export const metadata: Metadata = {
+  title: 'Citizen Cafe TLV — Link Shortener',
+};
+
 export default function HomePage() {
   return (
-    <main role="main">
-      <h1>Citizen Cafe TLV — Link Shortener</h1>
-    </main>
+    <PageShell variant="centered">
+      <BrandHeader variant="full" />
+      <ShortenForm />
+    </PageShell>
   );
 }

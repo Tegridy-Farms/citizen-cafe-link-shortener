@@ -1,15 +1,17 @@
-/**
- * Global 404 boundary for the Next.js App Router.
- * Next.js automatically returns HTTP 404 when this component is rendered
- * (either via notFound() or unmatched routes).
- *
- * Stage 2: minimal placeholder — full Citizen Cafe branding applied in Stage 3.
- */
-export default function NotFoundPage() {
+import type { Metadata } from 'next';
+import { PageShell } from '@/components/PageShell';
+import { BrandHeader } from '@/components/BrandHeader';
+import { NotFoundPage } from '@/components/NotFoundPage';
+
+export const metadata: Metadata = {
+  title: 'Link Not Found — Citizen Cafe TLV',
+};
+
+export default function NotFound() {
   return (
-    <div>
-      <h1>404 – Page Not Found</h1>
-      <p>The link you are looking for does not exist.</p>
-    </div>
+    <PageShell variant="error">
+      <BrandHeader variant="minimal" />
+      <NotFoundPage />
+    </PageShell>
   );
 }
