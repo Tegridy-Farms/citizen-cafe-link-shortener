@@ -4,7 +4,7 @@
 **Plan:** `docs/pipeline/plan.md`
 **Last updated:** 2026-03-22
 
-**Current Stage: 2**
+**Current Stage: 3**
 **Total Stages: 3**
 
 ---
@@ -14,8 +14,8 @@
 | Stage | Title | Status | Branch | Notes |
 |-------|-------|--------|--------|-------|
 | 1 | Scaffold, Migrations, and Core Library | DONE | stage-1-scaffold-migrations-core | PR #1 merged. 19 tests, 100% lib coverage, grade A. |
-| 2 | API Route — Shorten + Redirect | IN_PROGRESS | stage-2-api-route-shorten-redirect | PR #2 open. 48 tests, 95.91% line coverage. Awaiting QA. |
-| 3 | Frontend UI — Branding, Homepage Form, and 404 Page | PENDING | — | Requires Stage 2 |
+| 2 | API Route — Shorten + Redirect | DONE | stage-2-api-route-shorten-redirect | PR #2 merged. 48 tests, 95.91% line coverage. QA PASS. |
+| 3 | Frontend UI — Branding, Homepage Form, and 404 Page | IN_PROGRESS | — | Requires Stage 2 (now DONE) |
 
 ---
 
@@ -51,7 +51,7 @@
 
 **Objective:** Implement `POST /api/shorten` (key auth, URL validation, deduplication, insert) and the `GET /[shortcode]` RSC redirect route (302 → original URL or branded 404).
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 ### Development notes
 
@@ -64,27 +64,28 @@
 
 | Date       | Note |
 |------------|------|
-| —          | —    |
+| 2026-03-22 | Butters: Verified Stage 2 implementation against plan. All 9 acceptance criteria pass. 48 tests with 95.91% line coverage, 100% branch/function coverage. Build clean. AgentShield grade A with 0 findings. No POSTGRES_URL references. QA report: docs/qa/stage-2-review.md |
+| 2026-03-22 | Butters QA verdict: PASS |
 
 ### Merge notes
 
 | Date       | Note |
 |------------|------|
-| —          | —    |
+| 2026-03-22 | Cartman: PR #2 merged (squash) to main. Stage 2 DONE. Stage 3 tasks created; Kenny handed off. Prior QA summary written to docs/qa/prior-qa-summary-S3.md |
 
 ---
 
 ## Stage 3: Frontend UI — Branding, Homepage Form, and 404 Page
 
-**Objective:** Build the complete Citizen Cafe–branded homepage and styled 404 page.
+**Objective:** Build the complete Citizen Cafe–branded homepage (ShortenForm + BrandHeader) and the styled 404 page, applying all design-bible tokens (colors, fonts, spacing, interactions, accessibility).
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 ### Development notes
 
 | Date       | Note |
 |------------|------|
-| —          | —    |
+| 2026-03-22 | Stage created; Kenny handed off via sessions_send |
 
 ### QA notes
 
