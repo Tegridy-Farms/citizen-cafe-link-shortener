@@ -17,7 +17,7 @@
 | 2 | API Route — Shorten + Redirect | DONE | stage-2-api-route-shorten-redirect | PR #2 merged. 48 tests, 95.91% line coverage. QA PASS. |
 | 3 | Frontend UI — Branding, Homepage Form, and 404 Page | DONE | stage-3-frontend-ui-branding | PR #3 merged. 55 tests, 96.07% line coverage. QA PASS. |
 | 4 | Production Fix — Lazy Env Validation | DONE | stage-4-lazy-env-validation | PR #4 merged. 57 tests, build passes. Lazy getEnv() singleton implemented. |
-| 5 | Production Fix — Shortcode Route 500 on Not-Found | IN_PROGRESS | — | Production smoke FAIL: GET /[shortcode] returns 500 instead of 404. Root cause: db.ts uses (pool as any).sql or notFound() swallowed by try/catch. Fix: use direct sql import from @vercel/postgres; remove catch around notFound(). |
+| 5 | Production Fix — Shortcode Route 500 on Not-Found | IN_PROGRESS | — | Production smoke FAIL: GET /[shortcode] returns 500 instead of 404. Root cause: db.ts uses (pool as any).sql (unsafe runtime cast) or notFound() swallowed by try/catch. Fix: use direct sql import from @vercel/postgres; remove catch around notFound(). Kenny in progress. |
 
 ---
 
@@ -135,7 +135,7 @@
 
 ## Stage 5: Production Fix — Shortcode Route 500 on Not-Found
 
-**Objective:** Fix `app/[shortcode]/page.tsx` and `src/lib/db.ts` so GET /[shortcode] returns HTTP 404 (not 500) for non-existent shortcodes.
+**Objective:** Fix `src/app/[shortcode]/page.tsx` and `src/lib/db.ts` so `GET /[shortcode]` returns HTTP 404 (not 500) for non-existent shortcodes.
 
 **Status:** IN_PROGRESS
 
@@ -143,4 +143,4 @@
 
 | Date       | Note |
 |------------|------|
-| 2026-03-22 | Production fix triggered by Tweek: PRODUCTION_VERIFICATION_FAILED. Deployment READY, env vars PASS. Root cause: GET /[shortcode] returns HTTP 500 instead of 404 for missing shortcodes. Likely causes: (pool as any).sql throws at runtime, or notFound() swallowed by try/catch. Fix: use direct sql import from @vercel/postgres; remove any catch that swallows notFound(). Stage 5 tasks created; Kenny handed off. |
+| 2026-03-22 | Production fix triggered by Tweek: PRODUCTION_VERIFICATION_FAILED. Deployment READY, env vars PASS, API routes PASS. Root cause: GET /[shortcode] returns HTTP 500 instead of 404 for all missing shortcodes. Two likely failure modes: (1) db.ts uses (pool as any).sql which may throw at runtime on Vercel Node.js runtime vs build environment; (2) any try/catch around the sql call swallows the notFound() throw before Next.js can handle it. Fix: replace (pool as any).sql with direct sql import from @vercel/postgres; ensure notFound() propagates unimpeded. Stage 5 tasks created; Kenny handed off. |
