@@ -4,7 +4,7 @@
 **Plan:** `docs/pipeline/plan.md`
 **Last updated:** 2026-03-22
 
-**Current Stage: 4**
+**Current Stage: 4 (ALL STAGES COMPLETE)**
 **Total Stages: 4**
 
 ---
@@ -16,7 +16,7 @@
 | 1 | Scaffold, Migrations, and Core Library | DONE | stage-1-scaffold-migrations-core | PR #1 merged. 19 tests, 100% lib coverage, grade A. |
 | 2 | API Route — Shorten + Redirect | DONE | stage-2-api-route-shorten-redirect | PR #2 merged. 48 tests, 95.91% line coverage. QA PASS. |
 | 3 | Frontend UI — Branding, Homepage Form, and 404 Page | DONE | stage-3-frontend-ui-branding | PR #3 merged. 55 tests, 96.07% line coverage. QA PASS. |
-| 4 | Production Fix — Lazy Env Validation | DONE | stage-4-lazy-env-validation | PR #4: https://github.com/Tegridy-Farms/citizen-cafe-link-shortener/pull/4. 57 tests, build passes. Lazy getEnv() singleton implemented.
+| 4 | Production Fix — Lazy Env Validation | DONE | stage-4-lazy-env-validation | PR #4 merged. 57 tests, build passes. Lazy getEnv() singleton implemented. PIPELINE COMPLETE. |
 
 ---
 
@@ -115,4 +115,17 @@
 | Date       | Note |
 |------------|------|
 | 2026-03-22 | Production fix triggered by Tweek: PRODUCTION_VERIFICATION_FAILED. Root cause: env.ts throws eagerly at module scope; Vercel runtime env vars not available at build time. Fix: convert to lazy getEnv() singleton. Stage 4 tasks created; Kenny handed off. |
-| 2026-03-22 | Implemented. PR #4: https://github.com/Tegridy-Farms/citizen-cafe-link-shortener/pull/4. 57 tests (was 55), build passes. All 8 acceptance criteria verified. Lazy getEnv() singleton validates on first call, not at import time.
+| 2026-03-22 | Implemented. PR #4: https://github.com/Tegridy-Farms/citizen-cafe-link-shortener/pull/4. 57 tests (was 55), build passes. All 8 acceptance criteria verified. Lazy getEnv() singleton validates on first call, not at import time. |
+
+### QA notes
+
+| Date       | Note |
+|------------|------|
+| 2026-03-22 | Butters: Verified Stage 4 implementation. All 8 acceptance criteria pass. 57 tests, build passes. getEnv() lazy singleton implemented. QA report: docs/qa/stage-4-review.md |
+| 2026-03-22 | Butters QA verdict: PASS |
+
+### Merge notes
+
+| Date       | Note |
+|------------|------|
+| 2026-03-22 | Cartman: PR #4 merged (squash) to main. Stage 4 DONE. All 4 stages complete — PIPELINE COMPLETE. |
