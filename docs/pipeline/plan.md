@@ -8,9 +8,9 @@
 
 ## Project Size Assessment
 
-**Tier: Medium** — 10–30 files, full-stack (Next.js App Router, Neon Postgres), build tooling (package.json, TypeScript, Tailwind). Single DB table, 1 API route, 2 human-facing pages, ~5 components, and Zod validation. Max stages allowed: **3–5**. This plan uses **3 stages**, within the medium-tier cap.
+**Tier: Medium** — 10–30 files, full-stack (Next.js App Router, Neon Postgres), build tooling (package.json, TypeScript, Tailwind). Single DB table, 1 API route, 2 human-facing pages, ~5 components, and Zod validation. Max stages allowed: **3–5**. This plan uses **3 stages** (plus Stage 4 production fix), within the medium-tier cap.
 
-**Reasoning:** The app is end-to-end full-stack (migrations → API route → SSR redirect → frontend form), but has very narrow scope: one table, two pages, no auth system, no ORM. Three stages map cleanly to: scaffold + DB, API logic, and frontend UI. No stage justification needed for extras — three is already the minimum.
+**Reasoning:** The app is end-to-end full-stack (migrations → API route → SSR redirect → frontend form), but has very narrow scope: one table, two pages, no auth system, no ORM. Three stages map cleanly to: scaffold + DB, API logic, and frontend UI. No stage justification needed for extras — three is already the minimum. Stage 4 is a post-pipeline production-fix stage added after Tweek's smoke test reported PRODUCTION_VERIFICATION_FAILED.
 
 ---
 
@@ -190,6 +190,56 @@ The `key` field in `ShortenForm` uses `type="password"` to obscure the value. Th
 
 ---
 
+## Stage 4: Production Fixes — Missing Env Vars and Deployment Recovery
+
+**Objective:** Resolve production smoke failures by adding missing Vercel env vars (`SHORTEN_API_KEY`, `APP_BASE_URL`) and triggering a clean production deployment.
+
+**Implements:** R-001, R-002, R-004, R-009 (production readiness — all core requirements blocked by missing env vars)
+
+**Prerequisites:** Stages 1–3 complete (all merged to main). Tweek's production-reality-report.md at `docs/qa/production-reality-report.md`.
+
+**Context:** Tweek's smoke test reported PRODUCTION_VERIFICATION_FAILED on 2026-03-22:
+- `SHORTEN_API_KEY` not set in Vercel (any target)
+- `APP_BASE_URL` not set in Vercel (any target)
+- Latest deployment `dpl_EuYcTsqt7F3uwALhzxLrxEjUeAHY` in ERROR state — build/boot fails at `src/lib/env.ts` startup validation
+- `POST /api/shorten` returns 404 (API completely unreachable)
+
+No code changes are required. The app code is correct; the environment configuration in Vercel is missing.
+
+**Architecture:**
+- `src/lib/env.ts` throws at boot if `SHORTEN_API_KEY` or `APP_BASE_URL` are missing. This is by design (Stage 1 AC #3). The fix is to provide the values in Vercel — not to weaken the boot guard.
+- `APP_BASE_URL` must be set to `https://citizen-cafe-link-shortener.vercel.app` for production and preview targets. For development it may be `http://localhost:3000`.
+- `SHORTEN_API_KEY` must be a non-empty secret value shared with the Make/Integromat automation caller.
+- All three targets (production, preview, development) must have both vars set.
+- After adding env vars, trigger a new Vercel deployment from the current `main` HEAD using `vercel --prod` or via the Vercel dashboard redeploy action.
+
+**Test strategy:** strict — acceptance criteria are verified by Tweek's production smoke test (same checks as production-reality-report.md).
+
+### Files to Create/Modify
+
+| File Path | Action | Purpose |
+|-----------|--------|---------|
+| _(Vercel env vars)_ | configure | Add `SHORTEN_API_KEY` and `APP_BASE_URL` to Vercel project for production, preview, development targets |
+| _(Vercel deployment)_ | trigger | `vercel --prod` or dashboard redeploy from main HEAD after env vars are set |
+
+No source files change. This stage is purely operational.
+
+### Acceptance Criteria — Stage 4
+
+1. [ ] Vercel project env vars include `SHORTEN_API_KEY` (non-empty) for targets: production, preview, development — verified via `vercel env ls` or Vercel dashboard.
+2. [ ] Vercel project env vars include `APP_BASE_URL=https://citizen-cafe-link-shortener.vercel.app` for targets: production, preview, development — verified via `vercel env ls`.
+3. [ ] A new production deployment is triggered after both env vars are set, and the deployment reaches READY state (not ERROR).
+4. [ ] `GET https://citizen-cafe-link-shortener.vercel.app/` returns HTTP 200.
+5. [ ] `POST https://citizen-cafe-link-shortener.vercel.app/api/shorten` with valid URL and correct `SHORTEN_API_KEY` returns HTTP 201 and `{ "url": "https://citizen-cafe-link-shortener.vercel.app/<shortcode>" }`.
+6. [ ] `GET https://citizen-cafe-link-shortener.vercel.app/<shortcode>` (shortcode from AC #5) returns HTTP 302 with correct `Location` header.
+7. [ ] `GET https://citizen-cafe-link-shortener.vercel.app/INVALIDCODE` returns HTTP 404.
+
+### Estimated Complexity
+
+**Complexity:** S
+
+---
+
 ## Stage Count Justification
 
-3 stages for a Medium-tier project (max 5). No justification needed — three is within cap and maps cleanly to: infrastructure foundation → backend logic → frontend UI.
+3 planned stages for a Medium-tier project (max 5). Stage 4 is an unplanned production-fix stage added post-pipeline after Tweek reported PRODUCTION_VERIFICATION_FAILED. Production-fix stages do not count against the original tier cap — they are operational recovery stages, not scope expansion.
