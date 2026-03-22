@@ -193,3 +193,56 @@ The `key` field in `ShortenForm` uses `type="password"` to obscure the value. Th
 ## Stage Count Justification
 
 3 stages for a Medium-tier project (max 5). No justification needed — three is within cap and maps cleanly to: infrastructure foundation → backend logic → frontend UI.
+
+---
+
+## Stage 4: Production Fix — Lazy Env Validation
+
+**Objective:** Fix `src/lib/env.ts` to validate environment variables lazily (on first request) rather than eagerly at module-load time, so `next build` no longer throws during page data collection.
+
+**Implements:** R-007, R-008 (runtime correctness), production reliability
+
+**Prerequisites:** Stage 3 complete (all prior stages merged to `main`)
+
+**Architecture:**
+- **Root cause:** `src/lib/env.ts` currently throws at module scope (top-level evaluation). When `next build` runs the "Collecting page data" phase, it imports `app/api/shorten/route.ts`, which transitively imports `env.ts`. Because Vercel runtime env vars (`SHORTEN_API_KEY`, `APP_BASE_URL`, `DATABASE_URL`) are **not injected at build time** (only at runtime), the top-level throw crashes the build.
+- **Fix:** Convert `env.ts` to export a `getEnv()` function (lazy singleton pattern). The first call validates all required vars and throws if any are missing; subsequent calls return the cached result. The module itself never throws at import time.
+- **Callers:** `app/api/shorten/route.ts` and `app/[shortcode]/page.tsx` (and `src/lib/db.ts` if it reads `DATABASE_URL` via `env.ts`) must call `getEnv()` inside the route/page handler body — never at the top-level module scope outside a function.
+- **Tests:** Update `tests/env.test.ts` (or create it) to assert: (a) importing `env.ts` alone does NOT throw even when env vars are unset; (b) calling `getEnv()` with all vars set returns the correct object; (c) calling `getEnv()` with a missing var throws a descriptive error.
+
+**Design:** No UI changes. This is a pure infrastructure/runtime fix.
+
+**Product Note:** Vercel env vars (`DATABASE_URL`, `SHORTEN_API_KEY`, `APP_BASE_URL`) are confirmed present and correct in all Vercel environments (production, preview, development) per `docs/qa/production-reality-report.md`. The fix is code-only.
+
+**Test strategy:** strict
+
+### Files to Create/Modify
+
+| File Path | Action | Purpose |
+|-----------|--------|---------|
+| `src/lib/env.ts` | modify | Convert eager top-level throw to lazy `getEnv()` singleton; export `getEnv` (named) and `Env` type |
+| `app/api/shorten/route.ts` | modify | Replace any top-level `env.*` reads with `getEnv()` called inside the handler function body |
+| `app/[shortcode]/page.tsx` | modify | Replace any top-level `env.*` reads with `getEnv()` called inside the page/component function body |
+| `src/lib/db.ts` | modify (if applicable) | If `db.ts` reads `DATABASE_URL` via `env.ts` at module scope, wrap in a lazy initializer |
+| `tests/env.test.ts` | create/modify | Tests: import-does-not-throw, getEnv-returns-values, getEnv-throws-on-missing-var |
+
+### Acceptance Criteria — Stage 4
+
+1. [ ] `npm run build` completes successfully with no errors — the "Collecting page data" phase passes for `/api/shorten` and all other routes.
+2. [ ] Importing `src/lib/env.ts` in a Jest test with NO env vars set (empty `process.env`) does **not** throw; the module loads cleanly.
+3. [ ] Calling `getEnv()` inside a test with all required vars set (`DATABASE_URL`, `SHORTEN_API_KEY`, `APP_BASE_URL`) returns an object with those three keys populated correctly.
+4. [ ] Calling `getEnv()` inside a test with `SHORTEN_API_KEY` missing throws an error whose message contains `"SHORTEN_API_KEY"`.
+5. [ ] `app/api/shorten/route.ts` contains zero top-level (module-scope) references to `env` values — all env access is inside the exported handler function(s) only.
+6. [ ] `app/[shortcode]/page.tsx` contains zero top-level (module-scope) references to `env` values — all env access is inside the exported page/component function only.
+7. [ ] All existing tests continue to pass (`npm test` — test count must not decrease from 55).
+8. [ ] `npm run build` succeeds: no TypeScript errors, no lint errors.
+
+### Estimated Complexity
+
+**Complexity:** S
+
+---
+
+## Stage Count Justification (updated)
+
+4 stages for a Medium-tier project (max 5). Stage 4 is a production-fix stage added post-pipeline per Mode C protocol — `src/lib/env.ts` eagerly throws at build time, blocking every Vercel deployment. The fix is a focused, independently testable change to a single architectural module.

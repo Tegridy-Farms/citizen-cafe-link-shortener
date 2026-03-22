@@ -4,8 +4,8 @@
 **Plan:** `docs/pipeline/plan.md`
 **Last updated:** 2026-03-22
 
-**Current Stage: 3 (COMPLETE)**
-**Total Stages: 3**
+**Current Stage: 4**
+**Total Stages: 4**
 
 ---
 
@@ -16,6 +16,7 @@
 | 1 | Scaffold, Migrations, and Core Library | DONE | stage-1-scaffold-migrations-core | PR #1 merged. 19 tests, 100% lib coverage, grade A. |
 | 2 | API Route — Shorten + Redirect | DONE | stage-2-api-route-shorten-redirect | PR #2 merged. 48 tests, 95.91% line coverage. QA PASS. |
 | 3 | Frontend UI — Branding, Homepage Form, and 404 Page | DONE | stage-3-frontend-ui-branding | PR #3 merged. 55 tests, 96.07% line coverage. QA PASS. |
+| 4 | Production Fix — Lazy Env Validation | IN_PROGRESS | — | Production build failing: env.ts throws at build time. Fix: lazy getEnv() singleton. |
 
 ---
 
@@ -99,18 +100,18 @@
 
 | Date       | Note |
 |------------|------|
-| 2026-03-22 | Cartman: PR #3 merged (squash) to main. Stage 3 DONE. All stages complete — PIPELINE COMPLETE. |
+| 2026-03-22 | Cartman: PR #3 merged (squash) to main. Stage 3 DONE. All stages complete — PIPELINE COMPLETE (pre-production). |
 
 ---
 
-## Project Completion
+## Stage 4: Production Fix — Lazy Env Validation
 
-**All 3 stages complete. PIPELINE COMPLETE.**
+**Objective:** Fix `src/lib/env.ts` to use lazy validation so `next build` does not throw during page data collection.
 
-- Stage 1: Scaffold, migrations, core library — DONE
-- Stage 2: API routes (shorten + redirect) — DONE  
-- Stage 3: Frontend UI (branding, form, 404) — DONE
+**Status:** IN_PROGRESS
 
-**Final test count:** 55 tests passing
-**Final coverage:** 96.07% lines, 100% branch, 100% functions
-**Security:** AgentShield grade A on all stages
+### Development notes
+
+| Date       | Note |
+|------------|------|
+| 2026-03-22 | Production fix triggered by Tweek: PRODUCTION_VERIFICATION_FAILED. Root cause: env.ts throws eagerly at module scope; Vercel runtime env vars not available at build time. Fix: convert to lazy getEnv() singleton. Stage 4 tasks created; Kenny handed off. |
