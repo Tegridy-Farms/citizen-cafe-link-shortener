@@ -57,8 +57,8 @@ describe('src/app/[shortcode]/page.tsx — source checks', () => {
     expect(content).not.toMatch(/try\s*\{[\s\S]*?sql[\s\S]*?\}\s*catch/);
   });
 
-  // AC#4: db.ts uses direct sql import, not (pool as any).sql
-  it('db.ts uses direct sql import from @vercel/postgres', () => {
+  // AC#4: db.ts uses createPool with DATABASE_URL, not (pool as any).sql
+  it('db.ts uses createPool with DATABASE_URL and pool.sql.bind(pool)', () => {
     const fs = require('fs') as typeof import('fs');
     const path = require('path') as typeof import('path');
     const content = fs.readFileSync(
@@ -67,9 +67,14 @@ describe('src/app/[shortcode]/page.tsx — source checks', () => {
     );
     // Should NOT have the unsafe (pool as any).sql pattern
     expect(content).not.toMatch(/\(pool as any\)\.sql/);
-    expect(content).not.toMatch(/\.sql\.bind\(pool\)/);
-    // Should import sql directly from @vercel/postgres
-    expect(content).toMatch(/from ['"]@vercel\/postgres['"]/);
+    // Should NOT have bare import { sql } from '@vercel/postgres'
+    expect(content).not.toMatch(/import\s*\{\s*sql\s*\}\s*from\s*['"]@vercel\/postgres['"]/);
+    // Should use createPool with connectionString
+    expect(content).toMatch(/createPool/);
+    expect(content).toMatch(/connectionString/);
+    expect(content).toMatch(/process\.env\.DATABASE_URL/);
+    // Should use pool.sql.bind(pool)
+    expect(content).toMatch(/pool\.sql\.bind\(pool\)/);
   });
 });
 
