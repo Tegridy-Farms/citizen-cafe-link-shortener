@@ -4,7 +4,7 @@
 **Plan:** `docs/pipeline/plan.md`
 **Last updated:** 2026-03-22
 
-**Current Stage: 1**
+**Current Stage: 2**
 **Total Stages: 3**
 
 ---
@@ -13,8 +13,8 @@
 
 | Stage | Title | Status | Branch | Notes |
 |-------|-------|--------|--------|-------|
-| 1 | Scaffold, Migrations, and Core Library | DONE | stage-1-scaffold-migrations-core | PR #1: https://github.com/Tegridy-Farms/citizen-cafe-link-shortener/pull/1 |
-| 2 | API Route — Shorten + Redirect | PENDING | — | Requires Stage 1 |
+| 1 | Scaffold, Migrations, and Core Library | DONE | stage-1-scaffold-migrations-core | PR #1 merged. 19 tests, 100% lib coverage, grade A. |
+| 2 | API Route — Shorten + Redirect | IN_PROGRESS | — | Handed off to Kenny |
 | 3 | Frontend UI — Branding, Homepage Form, and 404 Page | PENDING | — | Requires Stage 2 |
 
 ---
@@ -36,27 +36,28 @@
 
 | Date       | Note |
 |------------|------|
-| —          | —    |
+| 2026-03-22 | Butters: Verified Stage 1 implementation against plan. All 7 acceptance criteria pass. 19 tests with 100% line coverage on src/lib/* files. Build clean. AgentShield grade A with 0 findings. No POSTGRES_URL references in source. Migration is idempotent (CREATE TABLE IF NOT EXISTS). QA report: docs/qa/stage-1-review.md |
+| 2026-03-22 | Butters QA verdict: PASS |
 
 ### Merge notes
 
 | Date       | Note |
 |------------|------|
-| —          | —    |
+| 2026-03-22 | Cartman: PR #1 merged (squash) to main. Stage 1 DONE. Stage 2 tasks created; Kenny handed off. |
 
 ---
 
 ## Stage 2: API Route — Shorten + Redirect
 
-**Objective:** Implement `POST /api/shorten` and the `GET /[shortcode]` RSC redirect route.
+**Objective:** Implement `POST /api/shorten` (key auth, URL validation, deduplication, insert) and the `GET /[shortcode]` RSC redirect route (302 → original URL or branded 404).
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 ### Development notes
 
 | Date       | Note |
 |------------|------|
-| —          | —    |
+| 2026-03-22 | Stage created; Kenny handed off via sessions_send |
 
 ### QA notes
 
