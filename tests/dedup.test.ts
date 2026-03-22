@@ -11,11 +11,11 @@ jest.mock('nanoid', () => ({
 }));
 
 jest.mock('../src/lib/env', () => ({
-  env: {
+  getEnv: jest.fn(() => ({
     DATABASE_URL: 'postgres://test:pass@localhost/testdb',
     SHORTEN_API_KEY: 'test-secret-key',
     APP_BASE_URL: 'http://localhost:3000',
-  },
+  })),
 }));
 
 jest.mock('../src/lib/db', () => ({
